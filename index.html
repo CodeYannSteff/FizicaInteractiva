@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Physics Sandbox - Advanced</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+        :root {
+            --bg-color: #1a1a1a;
+            --surface-color: #252526;
+            --primary-color: #00aaff;
+            --primary-hover-color: #007acc;
+            --text-color: #f0f0f0;
+            --border-color: #444;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        #title-container {
+            padding: 10px 20px;
+            background-color: #2c2c2c;
+            border-bottom: 2px solid var(--border-color);
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            z-index: 20;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.5em;
+            font-weight: 600;
+        }
+
+        #main-container {
+            display: flex;
+            width: 100%;
+            flex-grow: 1;
+        }
+
+        #controls-container {
+            width: 280px;
+            background-color: var(--surface-color);
+            padding: 20px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.3);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 10;
+        }
+        
+        #simulation-container {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            background-color: #111;
+        }
+
+        .control-group {
+            background-color: #333;
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .control-group h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+            color: var(--primary-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 8px;
+        }
+        
+        .tool-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        button, .tool-button {
+            background-color: var(--primary-hover-color);
+            color: white;
+            border: 1px solid var(--primary-color);
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 0.9em;
+            transition: background-color 0.3s ease, transform 0.1s ease;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+
+        button:hover, .tool-button:hover {
+            background-color: var(--primary-color);
+        }
+
+        button:active, .tool-button:active {
+            transform: translateY(1px);
+        }
+        
+        .tool-button.active {
+            background-color: #ff9800;
+            border-color: #f57c00;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+        }
+        
+        .value-display {
+            font-weight: bold;
+            color: var(--primary-color);
+            text-align: center;
+            margin-top: 5px;
+        }
+        
+        /* Inspector Panel */
+        #inspector-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(40, 40, 40, 0.9);
+            backdrop-filter: blur(5px);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            width: 250px;
+            z-index: 15;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            display: none; /* Hidden by default */
+        }
+        #inspector-panel h3 {
+             margin-top: 0;
+            color: var(--primary-color);
+            text-align: center;
+        }
+        .inspector-property {
+            margin-bottom: 15px;
+        }
+         .inspector-property label {
+            font-size: 0.9em;
+        }
+        .inspector-property input {
+            width: 100%;
+            background: #555;
+            border: 1px solid #666;
+            color: var(--text-color);
+            padding: 8px;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        #close-inspector {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            color: var(--text-color);
+            font-size: 1.2em;
+            cursor: pointer;
+        }
+
+
+    </style>
+</head>
+<body>
+
+    <div id="title-container">
+        <h1>Advanced 2D Physics Sandbox</h1>
+    </div>
+
+    <div id="main-container">
+        <div id="controls-container">
+            <div class="control-group">
+                <h3>Tools</h3>
+                <div class="tool-buttons">
+                    <button class="tool-button active" id="tool-select">Select</button>
+                    <button class="tool-button" id="tool-force">Apply Force</button>
+                    <button class="tool-button" id="tool-spring">Add Spring</button>
+                    <button class="tool-button" id="tool-thruster">Thruster</button>
+                </div>
+            </div>
+            
+            <div class="control-group">
+                <h3>Add Objects</h3>
+                <button id="add-box">Add Box</button>
+                <button id="add-circle">Add Circle</button>
+                <button id="add-stack">Add Stack</button>
+            </div>
+            
+            <div class="control-group" id="spring-settings" style="display: none;">
+                <h3>Spring Properties</h3>
+                 <label for="spring-stiffness-slider">Stiffness</label>
+                <input type="range" id="spring-stiffness-slider" min="0" max="1" step="0.05" value="0.05">
+                <div class="value-display" id="spring-stiffness-value">0.05</div>
+            </div>
+
+            <div class="control-group">
+                <h3>World Settings</h3>
+                <label for="gravity-slider">Gravitational Acceleration (g)</label>
+                <input type="range" id="gravity-slider" min="-2" max="2" step="0.1" value="1">
+                <div class="value-display" id="gravity-value">1.0</div>
+            </div>
+
+            <div class="control-group">
+                <h3>Simulation Control</h3>
+                <button id="clear-world">Clear World</button>
+            </div>
+        </div>
+
+        <div id="simulation-container">
+            <div id="inspector-panel">
+                <button id="close-inspector">&times;</button>
+                <h3>Object Inspector</h3>
+                <div class="inspector-property">
+                    <label for="inspector-mass">Mass</label>
+                    <input type="number" id="inspector-mass" step="0.1">
+                </div>
+                <div class="inspector-property">
+                    <label for="inspector-friction">Friction</label>
+                    <input type="number" id="inspector-friction" step="0.05">
+                </div>
+                <div class="inspector-property">
+                    <label for="inspector-restitution">Bounciness</label>
+                    <input type="number" id="inspector-restitution" step="0.05">
+                </div>
+                 <button id="update-body">Update Properties</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js"></script>
+    <script>
+        // Matter.js modules
+        const { Engine, Render, Runner, World, Bodies, Body, Mouse, MouseConstraint, Composite, Composites, Events, Constraint, Vector } = Matter;
+
+        // --- DOM Elements ---
+        const simulationContainer = document.getElementById('simulation-container');
+        const clearWorldBtn = document.getElementById('clear-world');
+        const gravitySlider = document.getElementById('gravity-slider');
+        const gravityValue = document.getElementById('gravity-value');
+        // Object buttons
+        const addBoxBtn = document.getElementById('add-box');
+        const addCircleBtn = document.getElementById('add-circle');
+        const addStackBtn = document.getElementById('add-stack');
+        // Tool buttons
+        const toolButtons = document.querySelectorAll('.tool-button');
+        const toolSelectBtn = document.getElementById('tool-select');
+        const toolForceBtn = document.getElementById('tool-force');
+        const toolSpringBtn = document.getElementById('tool-spring');
+        const toolThrusterBtn = document.getElementById('tool-thruster');
+        // Inspector Panel
+        const inspectorPanel = document.getElementById('inspector-panel');
+        const closeInspectorBtn = document.getElementById('close-inspector');
+        const updateBodyBtn = document.getElementById('update-body');
+        const massInput = document.getElementById('inspector-mass');
+        const frictionInput = document.getElementById('inspector-friction');
+        const restitutionInput = document.getElementById('inspector-restitution');
+        // Spring Settings
+        const springSettings = document.getElementById('spring-settings');
+        const springStiffnessSlider = document.getElementById('spring-stiffness-slider');
+        const springStiffnessValue = document.getElementById('spring-stiffness-value');
+
+        // --- Physics Engine Variables ---
+        let engine, render, runner, world, mouseConstraint;
+        
+        // --- State Variables ---
+        let currentTool = 'select';
+        let selectedBody = null;
+        let springBodyA = null;
+        let forceStartPos = null;
+        let forceEndPos = null;
+
+        // --- Initialization ---
+        function init() {
+            engine = Engine.create();
+            world = engine.world;
+            world.gravity.y = 1;
+
+            render = Render.create({
+                element: simulationContainer,
+                engine: engine,
+                options: {
+                    width: simulationContainer.clientWidth,
+                    height: simulationContainer.clientHeight,
+                    wireframes: false,
+                    background: '#111111',
+                    showAngleIndicator: true,
+                    showVelocity: true
+                }
+            });
+            Render.run(render);
+            runner = Runner.create();
+            Runner.run(runner, engine);
+
+            createWalls();
+            setupMouse();
+            setupEventListeners();
+            
+            handleResize(); // Initial size setup
+            populateWorld();
+        }
+
+        function createWalls() {
+            const width = simulationContainer.clientWidth;
+            const height = simulationContainer.clientHeight;
+            World.add(world, [
+                Bodies.rectangle(width / 2, height, width, 60, { isStatic: true, render: { fillStyle: '#444' } }),
+                Bodies.rectangle(width / 2, 0, width, 60, { isStatic: true, render: { fillStyle: '#444' } }),
+                Bodies.rectangle(0, height / 2, 60, height, { isStatic: true, render: { fillStyle: '#444' } }),
+                Bodies.rectangle(width, height / 2, 60, height, { isStatic: true, render: { fillStyle: '#444' } })
+            ]);
+        }
+
+        function setupMouse() {
+            const mouse = Mouse.create(render.canvas);
+            mouseConstraint = MouseConstraint.create(engine, {
+                mouse: mouse,
+                constraint: { stiffness: 0.2, render: { visible: false } }
+            });
+            World.add(world, mouseConstraint);
+            render.mouse = mouse;
+        }
+        
+        // --- Event Listeners ---
+        function setupEventListeners() {
+            // UI Controls
+            addBoxBtn.addEventListener('click', () => addShape('box'));
+            addCircleBtn.addEventListener('click', () => addShape('circle'));
+            addStackBtn.addEventListener('click', () => addShape('stack'));
+            clearWorldBtn.addEventListener('click', clearWorld);
+            gravitySlider.addEventListener('input', e => {
+                engine.world.gravity.y = parseFloat(e.target.value);
+                gravityValue.textContent = parseFloat(e.target.value).toFixed(1);
+            });
+            springStiffnessSlider.addEventListener('input', e => springStiffnessValue.textContent = parseFloat(e.target.value).toFixed(2));
+
+            // Tool selection
+            toolButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    switchTool(button.id.replace('tool-', ''));
+                });
+            });
+
+            // Inspector Panel
+            closeInspectorBtn.addEventListener('click', hideInspector);
+            updateBodyBtn.addEventListener('click', updateSelectedBody);
+            
+            // Matter.js Events
+            Events.on(mouseConstraint, 'mousedown', handleMouseDown);
+            Events.on(mouseConstraint, 'mouseup', handleMouseUp);
+            Events.on(engine, 'beforeUpdate', handleBeforeUpdate);
+            Events.on(render, 'afterRender', handleAfterRender);
+            
+            window.addEventListener('resize', handleResize);
+        }
+        
+        // --- Tool & Interaction Logic ---
+        
+        function switchTool(tool) {
+            currentTool = tool;
+            toolButtons.forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`tool-${tool}`).classList.add('active');
+            
+            // Reset tool-specific states
+            springBodyA = null;
+            mouseConstraint.constraint.stiffness = (tool === 'select') ? 0.2 : 0; // Disable dragging for other tools
+            springSettings.style.display = (tool === 'spring') ? 'block' : 'none';
+        }
+
+        function handleMouseDown(event) {
+            const mousePos = event.mouse.position;
+            const clickedBody = Matter.Query.point(Composite.allBodies(world), mousePos)[0];
+
+            hideInspector();
+
+            if (currentTool === 'select' && clickedBody) {
+                selectedBody = clickedBody;
+                showInspector(selectedBody);
+            } else if (currentTool === 'force') {
+                if (clickedBody) {
+                    forceStartPos = { ...mousePos };
+                    forceEndPos = { ...mousePos };
+                }
+            } else if (currentTool === 'spring') {
+                if (clickedBody) {
+                    if (!springBodyA) {
+                        springBodyA = clickedBody;
+                        // Visual feedback for first selection could be added here
+                    } else if (springBodyA !== clickedBody) {
+                        createSpring(springBodyA, clickedBody);
+                        springBodyA = null; // Reset for next spring
+                    }
+                } else {
+                    springBodyA = null; // Clicked on empty space, reset.
+                }
+            }
+        }
+        
+        function handleMouseUp(event) {
+            if (currentTool === 'force' && forceStartPos && forceEndPos) {
+                const clickedBody = Matter.Query.point(Composite.allBodies(world), forceStartPos)[0];
+                if(clickedBody){
+                    const forceMagnitude = Vector.magnitude(Vector.sub(forceEndPos, forceStartPos)) * 0.005; // Scaling factor
+                    const forceVector = Vector.mult(Vector.normalise(Vector.sub(forceEndPos, forceStartPos)), forceMagnitude);
+                    Body.applyForce(clickedBody, forceStartPos, forceVector);
+                }
+            }
+            forceStartPos = null;
+            forceEndPos = null;
+        }
+        
+        function handleBeforeUpdate() {
+            // Thruster logic
+            if (currentTool === 'thruster' && mouseConstraint.mouse.button === 0) { // If left mouse is down
+                 const mousePos = mouseConstraint.mouse.position;
+                 const bodiesUnderMouse = Matter.Query.point(Composite.allBodies(world), mousePos);
+                 if (bodiesUnderMouse.length > 0) {
+                     const body = bodiesUnderMouse[0];
+                     const force = { x: 0, y: -0.005 * body.mass }; // Constant upward force relative to mass
+                     Body.applyForce(body, body.position, force);
+                 }
+            }
+        }
+        
+        function handleAfterRender() {
+            // Draw force application vector
+            if (forceStartPos && forceEndPos) {
+                 const context = render.context;
+                 context.beginPath();
+                 context.moveTo(forceStartPos.x, forceStartPos.y);
+                 context.lineTo(forceEndPos.x, forceEndPos.y);
+                 context.strokeStyle = 'rgba(255, 152, 0, 0.8)';
+                 context.lineWidth = 3;
+                 context.stroke();
+                 forceEndPos = { ...mouseConstraint.mouse.position };
+            }
+            // Draw thruster effect
+            if (currentTool === 'thruster' && mouseConstraint.mouse.button === 0) {
+                 const mousePos = mouseConstraint.mouse.position;
+                 const bodiesUnderMouse = Matter.Query.point(Composite.allBodies(world), mousePos);
+                 if (bodiesUnderMouse.length > 0) {
+                     const body = bodiesUnderMouse[0];
+                     const context = render.context;
+                     context.fillStyle = 'rgba(255, 152, 0, 0.5)';
+                     context.beginPath();
+                     context.arc(body.position.x, body.position.y + body.circleRadius + 15 || body.position.y + 25, 10, 0, Math.PI * 2);
+                     context.fill();
+                 }
+            }
+        }
+
+        // --- Object & World Management ---
+        function addShape(type) {
+            const x = Math.random() * (render.options.width - 200) + 100;
+            const y = 100;
+            const options = { render: { fillStyle: getRandomColor(), strokeStyle: 'white', lineWidth: 2 } };
+
+            switch(type) {
+                case 'box':
+                    World.add(world, Bodies.rectangle(x, y, 80, 80, options));
+                    break;
+                case 'circle':
+                    World.add(world, Bodies.circle(x, y, 40, options));
+                    break;
+                case 'stack':
+                     World.add(world, Composites.stack(x, 50, 5, 5, 0, 0, (sx, sy) => 
+                        Bodies.rectangle(sx, sy, 40, 40, options)
+                    ));
+                    break;
+            }
+        }
+        
+        function createSpring(bodyA, bodyB) {
+             const spring = Constraint.create({
+                bodyA: bodyA,
+                bodyB: bodyB,
+                stiffness: parseFloat(springStiffnessSlider.value),
+                damping: 0.05,
+                render: {
+                    type: 'line',
+                    strokeStyle: '#00aaff',
+                    lineWidth: 3
+                }
+            });
+            World.add(world, spring);
+        }
+
+        function clearWorld() {
+            World.clear(world);
+            Engine.clear(engine);
+            Render.stop(render);
+            Runner.stop(runner);
+            render.canvas.remove();
+            init();
+        }
+        
+        function populateWorld() {
+            addShape('stack');
+        }
+
+        // --- Inspector Panel Logic ---
+        function showInspector(body) {
+            if(body.isStatic) return;
+            selectedBody = body;
+            massInput.value = body.mass.toFixed(2);
+            frictionInput.value = body.friction.toFixed(2);
+            restitutionInput.value = body.restitution.toFixed(2);
+            inspectorPanel.style.display = 'block';
+        }
+
+        function hideInspector() {
+            inspectorPanel.style.display = 'none';
+            selectedBody = null;
+        }
+
+        function updateSelectedBody() {
+            if (!selectedBody) return;
+            
+            Body.setMass(selectedBody, parseFloat(massInput.value));
+            selectedBody.friction = parseFloat(frictionInput.value);
+            selectedBody.restitution = parseFloat(restitutionInput.value);
+
+            hideInspector();
+        }
+
+        // --- Utility Functions ---
+        function handleResize() {
+            render.bounds.max.x = simulationContainer.clientWidth;
+            render.bounds.max.y = simulationContainer.clientHeight;
+            render.options.width = simulationContainer.clientWidth;
+            render.options.height = simulationContainer.clientHeight;
+            Render.setPixelRatio(render, window.devicePixelRatio);
+            // This is a simplified resize, for a more robust solution, you'd reposition static bodies.
+        }
+        
+        function getRandomColor() {
+            const letters = '89ABCDEF';
+            let color = '#';
+            for (let i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * letters.length)];
+            }
+            return color;
+        }
+
+        // --- Start Simulation ---
+        window.onload = init;
+    </script>
+</body>
+</html>
