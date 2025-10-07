@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulator Termodinamic Interactiv</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+        }
+        .heatmap-gradient {
+            background: linear-gradient(to top, #3b82f6, #fde047, #ef4444);
+        }
+        .thermometer {
+            transition: all 0.3s ease-in-out;
+        }
+        .thermometer-tip {
+            width: 15px;
+            height: 15px;
+            background: #4b5563;
+            border-radius: 50%;
+        }
+        .laser-beam {
+            position: absolute;
+            width: 2px;
+            background: red;
+            opacity: 0;
+            transition: all 0.1s;
+            transform-origin: left;
+        }
+        select:disabled, input[type="range"]:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .bubble {
+            position: absolute;
+            background-color: rgba(255, 255, 255, 0.3);
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            bottom: 5px;
+            animation: rise 4s infinite ease-in;
+            opacity: 0;
+        }
+        @keyframes rise {
+            0% {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-120px) scale(1.5);
+                opacity: 0;
+            }
+        }
+        .steam {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 40%;
+            background: linear-gradient(to top, rgba(255,255,255,0), rgba(255,255,255,0.2));
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex items-center justify-center h-screen">
+
+    <div class="container mx-auto p-4 grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-7xl w-full h-full">
+
+        <!-- Coloana Stânga: Vizualizare Experiment -->
+        <div class="bg-gray-800 rounded-2xl p-6 flex flex-col justify-between shadow-lg border border-gray-700">
+            <h2 class="text-2xl font-bold mb-4 text-center text-cyan-400">Experiment Virtual</h2>
+            
+            <div class="flex-grow flex flex-col items-center justify-center space-y-6">
+                <!-- Radiator -->
+                <div class="w-full text-center">
+                    <p class="mb-2 font-semibold">Radiator (Sursă/Corp Termic)</p>
+                    <div id="radiator" class="w-3/4 h-12 mx-auto rounded-lg border-2 border-gray-600 transition-colors duration-500 shadow-md"></div>
+                    <p id="radiator-temp" class="mt-2 text-lg font-mono">20.0 °C</p>
+                </div>
+
+                <!-- Săgeată Transfer Căldură -->
+                <div class="text-4xl text-gray-500 animate-pulse">
+                    &#x2195;
+                    <p class="text-sm font-semibold">Transfer de Căldură</p>
+                </div>
+
+                <!-- Vas cu Substanță -->
+                <div class="w-full text-center relative">
+                    <p class="mb-2 font-semibold">Vas Izolat (Volum Constant)</p>
+                    <div id="container" class="w-3/4 h-32 mx-auto rounded-lg border-2 border-gray-600 transition-colors duration-500 shadow-inner relative overflow-hidden">
+                        <div id="heatmap" class="absolute inset-0 transition-opacity duration-500 opacity-0 bg-cover heatmap-gradient"></div>
+                        <div id="bubbles-container"></div>
+                        <div id="steam" class="steam"></div>
+                    </div>
+                    <div class="flex justify-center items-center space-x-4 mt-2">
+                        <p id="substance-temp" class="text-lg font-mono">20.0 °C</p>
+                        <p id="substance-state" class="text-lg font-bold text-cyan-300">Lichid</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Termometru IR -->
+            <div class="mt-6 flex items-center justify-center space-x-4">
+                 <div id="thermometer" class="thermometer bg-gray-700 p-2 rounded-lg flex items-center shadow-lg">
+                    <div class="thermometer-tip"></div>
+                    <div class="w-24 h-8 bg-gray-900 rounded-md ml-2 flex items-center justify-center">
+                        <span id="ir-reading" class="text-lime-400 font-mono text-lg">--.- °C</span>
+                    </div>
+                 </div>
+                 <button id="measure-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                     Măsoară
+                 </button>
+            </div>
+            <div id="laser" class="laser-beam"></div>
+
+        </div>
+
+        <!-- Coloana Dreapta: Grafice și Controale -->
+        <div class="bg-gray-800 rounded-2xl p-6 flex flex-col shadow-lg border border-gray-700">
+            <h2 class="text-2xl font-bold mb-4 text-center text-cyan-400">Date & Control</h2>
+            
+            <!-- Grafic -->
+            <div class="flex-grow bg-gray-900 p-4 rounded-lg">
+                <canvas id="temperatureChart"></canvas>
+            </div>
+
+            <!-- Parametrii -->
+            <div class="grid grid-cols-2 lg:grid-cols-3 gap-4 mt-4 text-center">
+                <div class="bg-gray-700 p-3 rounded-lg">
+                    <p class="text-sm text-gray-400">Masa Substanței (m)</p>
+                    <p class="text-xl font-bold">1.0 <span class="text-sm">kg</span></p>
+                </div>
+                <div class="bg-gray-700 p-3 rounded-lg">
+                    <p class="text-sm text-gray-400">Căldură Specifică (c)</p>
+                    <p class="text-xl font-bold">4186 <span class="text-sm">J/kg°C</span></p>
+                </div>
+                <div class="bg-gray-700 p-3 rounded-lg">
+                    <p class="text-sm text-gray-400">Presiune (P)</p>
+                    <p id="substance-pressure" class="text-xl font-bold">1.00 <span class="text-sm">atm</span></p>
+                </div>
+            </div>
+
+            <!-- Controale -->
+            <div class="flex flex-col items-center space-y-4 mt-6">
+                <div class="w-full">
+                    <label for="sim-mode" class="text-sm mr-2 font-medium">Mod Experiment:</label>
+                    <select id="sim-mode" class="bg-gray-700 text-white rounded p-2 focus:ring-cyan-500 border-gray-600 focus:border-cyan-500 w-full">
+                        <option value="oscillation">Oscilație Forțată</option>
+                        <option value="equilibrium">Echilibru & Fierbere</option>
+                    </select>
+                </div>
+                <div id="equilibrium-controls" class="w-full text-center hidden">
+                    <label for="radiator-start-temp" class="text-sm">Temp. Inițială Radiator: <span id="radiator-start-temp-value">120</span>°C</label>
+                    <input type="range" id="radiator-start-temp" min="80" max="200" value="120" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                </div>
+                <div class="flex justify-center space-x-4">
+                    <button id="start-stop-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-md w-32 transition-transform transform hover:scale-105">Start</button>
+                    <button id="reset-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md w-32 transition-transform transform hover:scale-105">Reset</button>
+                    <div class="flex items-center space-x-2">
+                        <input type="checkbox" id="heatmap-toggle" class="form-checkbox h-5 w-5 text-cyan-500 rounded focus:ring-0 bg-gray-700 border-gray-600">
+                        <label for="heatmap-toggle" class="text-sm">Thermal View</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <audio id="boiling-sound" loop src="https://www.soundjay.com/nature/boiling-water-1.mp3"></audio>
+
+    <script>
+        // DOM Elements
+        const radiatorEl = document.getElementById('radiator');
+        const radiatorTempEl = document.getElementById('radiator-temp');
+        const containerEl = document.getElementById('container');
+        const substanceTempEl = document.getElementById('substance-temp');
+        const irReadingEl = document.getElementById('ir-reading');
+        const measureBtn = document.getElementById('measure-btn');
+        const startStopBtn = document.getElementById('start-stop-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const heatmapToggle = document.getElementById('heatmap-toggle');
+        const heatmapEl = document.getElementById('heatmap');
+        const thermometerEl = document.getElementById('thermometer');
+        const laserEl = document.getElementById('laser');
+        const pressureEl = document.getElementById('substance-pressure');
+        const simModeEl = document.getElementById('sim-mode');
+        const substanceStateEl = document.getElementById('substance-state');
+        const bubblesContainer = document.getElementById('bubbles-container');
+        const steamEl = document.getElementById('steam');
+        const boilingSound = document.getElementById('boiling-sound');
+        const equilibriumControls = document.getElementById('equilibrium-controls');
+        const radiatorStartTempSlider = document.getElementById('radiator-start-temp');
+        const radiatorStartTempValue = document.getElementById('radiator-start-temp-value');
+        
+        // Simulation Parameters
+        const MASA_SUBSTANTA = 1.0; // kg
+        const CALDURA_SPECIFICA = 4186; // J/kg°C (apă)
+        const CAPACITATE_CALORICA_RADIATOR = 10000; // J/°C
+        const TEMP_INITIALA = 20.0;
+        const TEMP_AMBIANTA = 20.0;
+        const PRESIUNE_INITIALA_ATM = 1.00;
+        const AMPLITUDINE_TEMP_RADIATOR = 60.0;
+        const COEF_TRANSFER_CALDURA = 250; // W/°C
+        const BOILING_POINT = 100.0; // °C
+        const LATENT_HEAT_VAPORIZATION = 2260000; // J/kg
+
+        // Simulation State
+        let simTime = 0, radiatorTemp = TEMP_INITIALA, substanceTemp = TEMP_INITIALA, substancePressure = PRESIUNE_INITIALA_ATM;
+        let isRunning = false, simulationInterval;
+        let substanceState = 'LICHID', vaporizedMass = 0;
+
+        const ctx = document.getElementById('temperatureChart').getContext('2d');
+        const tempChart = new Chart(ctx, { type: 'line', data: { labels: [], datasets: [ { label: 'Temperatură Substanță', data: [], borderColor: 'rgba(59, 130, 246, 1)', backgroundColor: 'rgba(59, 130, 246, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0 }, { label: 'Temperatură Radiator', data: [], borderColor: 'rgba(239, 68, 68, 1)', backgroundColor: 'rgba(239, 68, 68, 0.2)', borderWidth: 2, tension: 0.4, pointRadius: 0, borderDash: [5, 5] } ] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: false, title: { display: true, text: 'Temperatură (°C)', color: '#9ca3af' }, ticks: { color: '#9ca3af' }, grid: { color: 'rgba(156, 163, 175, 0.2)' } }, x: { title: { display: true, text: 'Timp (s)', color: '#9ca3af' }, ticks: { color: '#9ca3af' }, grid: { color: 'rgba(156, 163, 175, 0.2)' } } }, plugins: { legend: { labels: { color: '#d1d5db' } } } } });
+
+        function mapTempToColor(temp) { const minTemp = 0, maxTemp = 150; const tempRatio = Math.max(0, Math.min(1, (temp - minTemp) / (maxTemp - minTemp))); const hue = 240 * (1 - tempRatio); return `hsl(${hue}, 90%, 50%)`; }
+        function calculatePressure() { const tempKelvin = substanceTemp + 273.15; const tempInitialaKelvin = TEMP_INITIALA + 273.15; substancePressure = PRESIUNE_INITIALA_ATM * (tempKelvin / tempInitialaKelvin); if (substanceState === 'FIERBERE') substancePressure += (vaporizedMass / MASA_SUBSTANTA) * 2; pressureEl.innerHTML = `${substancePressure.toFixed(2)} <span class="text-sm">atm</span>`; }
+
+        function updateSimulation() {
+            if (!isRunning) return;
+            const timeStep = 0.1; simTime += timeStep;
+            const currentMode = simModeEl.value;
+
+            if (currentMode === 'oscillation') {
+                radiatorTemp = TEMP_AMBIANTA + AMPLITUDINE_TEMP_RADIATOR * Math.sin(simTime / 10);
+                const tempDifference = radiatorTemp - substanceTemp;
+                const heatTransferredThisStep = COEF_TRANSFER_CALDURA * tempDifference * timeStep;
+                const deltaT = heatTransferredThisStep / (MASA_SUBSTANTA * CALDURA_SPECIFICA);
+                substanceTemp += deltaT;
+            } else if (currentMode === 'equilibrium') {
+                const tempDifference = radiatorTemp - substanceTemp;
+                let heatTransferred = COEF_TRANSFER_CALDURA * tempDifference * timeStep;
+                radiatorTemp -= heatTransferred / CAPACITATE_CALORICA_RADIATOR;
+                
+                if (substanceState === 'LICHID') {
+                    const tempBefore = substanceTemp;
+                    substanceTemp += heatTransferred / (MASA_SUBSTANTA * CALDURA_SPECIFICA);
+                    if (substanceTemp >= BOILING_POINT) {
+                        const heatToBoil = (BOILING_POINT - tempBefore) * MASA_SUBSTANTA * CALDURA_SPECIFICA;
+                        const excessHeat = heatTransferred - heatToBoil;
+                        vaporizedMass += excessHeat / LATENT_HEAT_VAPORIZATION;
+                        substanceTemp = BOILING_POINT;
+                        substanceState = 'FIERBERE';
+                    }
+                } else if (substanceState === 'FIERBERE') {
+                    vaporizedMass += heatTransferred / LATENT_HEAT_VAPORIZATION;
+                    if (vaporizedMass >= MASA_SUBSTANTA) {
+                        vaporizedMass = MASA_SUBSTANTA;
+                        substanceState = 'GAZ';
+                    }
+                }
+            }
+            updateUI();
+        }
+
+        function updateUI() {
+            radiatorTempEl.textContent = `${radiatorTemp.toFixed(1)} °C`;
+            substanceTempEl.textContent = `${substanceTemp.toFixed(1)} °C`;
+            substanceStateEl.textContent = substanceState;
+            radiatorEl.style.backgroundColor = mapTempToColor(radiatorTemp);
+            containerEl.style.backgroundColor = mapTempToColor(substanceTemp);
+            heatmapEl.style.opacity = heatmapToggle.checked ? Math.max(0, Math.min(1, (substanceTemp - TEMP_AMBIANTA) / AMPLITUDINE_TEMP_RADIATOR)) : 0;
+            calculatePressure();
+            
+            if (substanceState === 'FIERBERE') {
+                if (boilingSound.paused) boilingSound.play();
+                if (Math.random() > 0.5) createBubble();
+                steamEl.style.opacity = vaporizedMass / MASA_SUBSTANTA;
+            } else {
+                if (!boilingSound.paused) boilingSound.pause();
+                steamEl.style.opacity = 0;
+            }
+
+            if (simTime % 1 < 0.1) {
+                const label = Math.floor(simTime); tempChart.data.labels.push(label); tempChart.data.datasets[0].data.push(substanceTemp.toFixed(2)); tempChart.data.datasets[1].data.push(radiatorTemp.toFixed(2));
+                if(tempChart.data.labels.length > 50) { tempChart.data.labels.shift(); tempChart.data.datasets.forEach(dataset => dataset.data.shift()); }
+                tempChart.update();
+            }
+        }
+        
+        function resetSimulation() {
+            isRunning = false; clearInterval(simulationInterval);
+            simTime = 0; substanceTemp = TEMP_INITIALA; radiatorTemp = TEMP_INITIALA; vaporizedMass = 0; substanceState = 'LICHID';
+            simModeEl.disabled = false; radiatorStartTempSlider.disabled = false;
+            startStopBtn.textContent = 'Start'; startStopBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700'); startStopBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+            tempChart.data.labels = []; tempChart.data.datasets.forEach(dataset => dataset.data = []); tempChart.update();
+            irReadingEl.textContent = '--.- °C';
+            bubblesContainer.innerHTML = '';
+            updateUI();
+        }
+
+        function createBubble() { const bubble = document.createElement('div'); bubble.className = 'bubble'; bubble.style.left = `${Math.random() * 90}%`; bubble.style.animationDelay = `${Math.random() * 2}s`; bubblesContainer.appendChild(bubble); setTimeout(() => { bubble.remove(); }, 4000); }
+        
+        simModeEl.addEventListener('change', (e) => {
+            equilibriumControls.style.display = e.target.value === 'equilibrium' ? 'block' : 'none';
+        });
+        radiatorStartTempSlider.addEventListener('input', (e) => {
+            radiatorStartTempValue.textContent = e.target.value;
+        });
+
+        startStopBtn.addEventListener('click', () => {
+            if (simTime === 0 && simModeEl.value === 'equilibrium') { radiatorTemp = parseFloat(radiatorStartTempSlider.value); }
+            isRunning = !isRunning; simModeEl.disabled = isRunning; radiatorStartTempSlider.disabled = isRunning;
+            if (isRunning) { startStopBtn.textContent = 'Pauză'; startStopBtn.classList.remove('bg-green-600', 'hover:bg-green-700'); startStopBtn.classList.add('bg-yellow-600', 'hover:bg-yellow-700'); simulationInterval = setInterval(updateSimulation, 100); } 
+            else { startStopBtn.textContent = 'Continuă'; startStopBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700'); startStopBtn.classList.add('bg-green-600', 'hover:bg-green-700'); clearInterval(simulationInterval); }
+        });
+
+        resetBtn.addEventListener('click', resetSimulation);
+
+        measureBtn.addEventListener('click', () => {
+            const measuredTemp = substanceTemp + (Math.random() - 0.5) * 0.3; irReadingEl.textContent = `${measuredTemp.toFixed(1)} °C`;
+            thermometerEl.style.transform = 'translateX(-10px) rotate(-5deg)'; const thermRect = thermometerEl.getBoundingClientRect(); const contRect = containerEl.getBoundingClientRect(); const startX = thermRect.right - (thermRect.width / 2); const startY = thermRect.top + (thermRect.height / 2); const endX = contRect.left + (contRect.width / 2); const endY = contRect.top + (contRect.height / 2); const dx = endX - startX, dy = endY - startY; const distance = Math.sqrt(dx*dx + dy*dy); const angle = Math.atan2(dy, dx) * 180 / Math.PI; laserEl.style.left = `${startX}px`; laserEl.style.top = `${startY}px`; laserEl.style.height = `${distance}px`; laserEl.style.transform = `rotate(${angle-90}deg)`; laserEl.style.opacity = '1';
+            setTimeout(() => { thermometerEl.style.transform = 'translateX(0) rotate(0deg)'; laserEl.style.opacity = '0'; }, 300);
+        });
+        
+        updateUI();
+    </script>
+</body>
+</html>
+
