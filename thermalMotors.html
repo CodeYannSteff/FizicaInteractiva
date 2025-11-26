@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="ro">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Simulator Motor Otto - 4 Timpi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none;
+        }
+
+        /* Custom slider styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+        }
+
+        input[type=range]:focus {
+            outline: none;
+        }
+
+        .glass-panel {
+            background: rgba(31, 41, 55, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-control {
+            transition: all 0.2s;
+        }
+
+        .btn-control:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-2 sm:p-4">
+
+    <div class="container mx-auto grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 max-w-7xl w-full">
+
+        <!-- Left Column: Engine Visualization -->
+        <div
+            class="glass-panel rounded-2xl p-4 sm:p-6 flex flex-col justify-between shadow-lg order-1 relative overflow-hidden">
+            <h2 class="text-xl sm:text-2xl font-bold mb-2 text-center text-cyan-400">Vizualizare Motor Otto</h2>
+
+            <div class="flex-grow flex flex-col items-center justify-center relative w-full h-[400px] sm:h-[500px]">
+                <canvas id="engineCanvas" class="w-full h-full object-contain"></canvas>
+
+                <!-- Overlay Stats -->
+                <div
+                    class="absolute top-2 left-2 bg-black/50 p-2 rounded text-xs sm:text-sm font-mono pointer-events-none">
+                    <p>Timp: <span id="stroke-name" class="font-bold text-yellow-400">Admisie</span></p>
+                    <p>Volum: <span id="current-vol">0.5</span> L</p>
+                    <p>Presiune: <span id="current-press">1.0</span> atm</p>
+                    <p>Temp: <span id="current-temp">300</span> K</p>
+                </div>
+            </div>
+
+            <!-- Playback Controls -->
+            <div class="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <button onclick="jumpToStroke(0)"
+                    class="btn-control bg-blue-600/80 hover:bg-blue-600 p-2 rounded text-xs sm:text-sm font-bold">Admisie</button>
+                <button onclick="jumpToStroke(180)"
+                    class="btn-control bg-yellow-600/80 hover:bg-yellow-600 p-2 rounded text-xs sm:text-sm font-bold">Compresie</button>
+                <button onclick="jumpToStroke(360)"
+                    class="btn-control bg-red-600/80 hover:bg-red-600 p-2 rounded text-xs sm:text-sm font-bold">Detentă</button>
+                <button onclick="jumpToStroke(540)"
+                    class="btn-control bg-gray-600/80 hover:bg-gray-600 p-2 rounded text-xs sm:text-sm font-bold">Evacuare</button>
+            </div>
+            <div class="mt-2 flex justify-center space-x-4">
+                <button id="slow-mo-btn"
+                    class="btn-control bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg shadow-md text-sm">Slow
+                    Motion: OFF</button>
+            </div>
+        </div>
+
+        <!-- Right Column: Graphs & Controls -->
+        <div class="glass-panel rounded-2xl p-4 sm:p-6 flex flex-col shadow-lg order-2">
+            <h2 class="text-xl sm:text-2xl font-bold mb-4 text-center text-cyan-400">Analiză Ciclu</h2>
+
+            <!-- Graphs Container -->
+            <div class="flex flex-col space-y-4">
+                <!-- PV Diagram -->
+                <div class="bg-gray-900/80 p-2 rounded-lg h-[200px] relative">
+                    <canvas id="pvChart"></canvas>
+                </div>
+                <!-- Time Diagram -->
+                <div class="bg-gray-900/80 p-2 rounded-lg h-[150px] relative">
+                    <canvas id="timeChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Thermodynamics Data -->
+            <div class="grid grid-cols-2 gap-4 mt-4 text-center">
+                <div class="bg-gray-800 p-2 rounded-lg border border-gray-700">
+                    <p class="text-xs text-gray-400">Lucru Mecanic (W)</p>
+                    <p id="work-display" class="text-base font-bold text-green-400">0 J</p>
+                </div>
+                <div class="bg-gray-800 p-2 rounded-lg border border-gray-700">
+                    <p class="text-xs text-gray-400">Randament (&eta;)</p>
+                    <p id="efficiency-display" class="text-base font-bold text-purple-400">0 %</p>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="flex flex-col space-y-4 mt-4">
+                <!-- Compression Ratio -->
+                <div>
+                    <label class="flex justify-between text-xs font-medium mb-1">
+                        <span>Raport Compresie (r)</span>
+                        <span id="compression-val" class="text-cyan-300">8.0</span>
+                    </label>
+                    <input type="range" id="compression-slider" min="4" max="12" step="0.1" value="8"
+                        class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500">
+                </div>
+
+                <!-- RPM -->
+                <div>
+                    <label class="flex justify-between text-xs font-medium mb-1">
+                        <span>Viteză (RPM)</span>
+                        <span id="rpm-val" class="text-cyan-300">60</span>
+                    </label>
+                    <input type="range" id="rpm-slider" min="10" max="600" step="10" value="60"
+                        class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500">
+                </div>
+
+                <!-- Heat Added -->
+                <div>
+                    <label class="flex justify-between text-xs font-medium mb-1">
+                        <span>Căldură Adăugată (Q_in)</span>
+                        <span id="heat-val" class="text-cyan-300">1500 J</span>
+                    </label>
+                    <input type="range" id="heat-slider" min="500" max="3000" step="100" value="1500"
+                        class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500">
+                </div>
+
+                <div class="flex justify-center pt-2">
+                    <button id="play-pause-btn"
+                        class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-full shadow-lg transition-transform transform active:scale-95 flex items-center space-x-2">
+                        <span id="play-icon">▶</span>
+                        <span id="play-text">Start Simulare</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Constants & Physics ---
+        const GAMMA = 1.4; // Adiabatic index for air
+        const R = 8.314; // Ideal gas constant
+        const P_ATM = 101325; // Pa
+        const T_AMBIENT = 300; // K
+        const V_DISPLACEMENT = 0.0005; // 0.5 Liters per cylinder (fixed for visual scale)
+
+        // --- State ---
+        let state = {
+            compressionRatio: 8.0,
+            rpm: 60,
+            heatAdded: 1500, // Joules
+            crankAngle: 0, // Degrees (0-720 for full 4-stroke cycle)
+            isRunning: false,
+            isSlowMo: false,
+            pistonY: 0, // 0 to 1 (0 = TDC, 1 = BDC)
+            currentVolume: 0,
+            currentPressure: 0,
+            currentTemp: 0,
+            cyclePoints: [] // {v, p} points for drawing the cycle
+        };
+
+        // --- DOM Elements ---
+        const canvas = document.getElementById('engineCanvas');
+        const ctx = canvas.getContext('2d');
+        const strokeNameEl = document.getElementById('stroke-name');
+        const volEl = document.getElementById('current-vol');
+        const pressEl = document.getElementById('current-press');
+        const tempEl = document.getElementById('current-temp');
+        const workEl = document.getElementById('work-display');
+        const effEl = document.getElementById('efficiency-display');
+        const compSlider = document.getElementById('compression-slider');
+        const rpmSlider = document.getElementById('rpm-slider');
+        const heatSlider = document.getElementById('heat-slider');
+        const playBtn = document.getElementById('play-pause-btn');
+        const playText = document.getElementById('play-text');
+        const slowMoBtn = document.getElementById('slow-mo-btn');
+
+        // --- Chart.js Setup ---
+        const pvCtx = document.getElementById('pvChart').getContext('2d');
+        const pvChart = new Chart(pvCtx, {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: 'Ciclu Otto',
+                    data: [],
+                    showLine: true,
+                    borderColor: 'rgba(56, 189, 248, 1)', // Cyan
+                    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: true
+                }, {
+                    label: 'Stare Curentă',
+                    data: [],
+                    pointRadius: 6,
+                    pointBackgroundColor: 'rgba(250, 204, 21, 1)', // Yellow
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                scales: {
+                    x: {
+                        type: 'linear',
+                        position: 'bottom',
+                        title: { display: true, text: 'Volum (L)', color: '#9ca3af' },
+                        grid: { color: 'rgba(255,255,255,0.1)' },
+                        ticks: { color: '#9ca3af' }
+                    },
+                    y: {
+                        title: { display: true, text: 'Presiune (atm)', color: '#9ca3af' },
+                        grid: { color: 'rgba(255,255,255,0.1)' },
+                        ticks: { color: '#9ca3af' }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false }
+                }
+            }
+        });
+
+        const timeCtx = document.getElementById('timeChart').getContext('2d');
+        const timeChart = new Chart(timeCtx, {
+            type: 'line',
+            data: {
+                labels: Array.from({ length: 721 }, (_, i) => i), // 0 to 720
+                datasets: [
+                    {
+                        label: 'Presiune (atm)',
+                        data: [],
+                        borderColor: 'rgba(239, 68, 68, 1)', // Red
+                        borderWidth: 2,
+                        yAxisID: 'y',
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Temperatură (K)',
+                        data: [],
+                        borderColor: 'rgba(59, 130, 246, 1)', // Blue
+                        borderWidth: 2,
+                        yAxisID: 'y1',
+                        pointRadius: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: {
+                        type: 'linear',
+                        min: 0,
+                        max: 720,
+                        ticks: { stepSize: 180, color: '#9ca3af' },
+                        grid: { color: 'rgba(255,255,255,0.1)' },
+                        title: { display: true, text: 'Unghi (grade)', color: '#9ca3af' }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: { display: true, text: 'Presiune', color: '#ef4444' },
+                        grid: { display: false }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: { display: true, text: 'Temp', color: '#3b82f6' },
+                        grid: { display: false }
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: '#d1d5db', boxWidth: 10 } },
+                    annotation: {
+                        annotations: {
+                            line1: {
+                                type: 'line',
+                                xMin: 0,
+                                xMax: 0,
+                                borderColor: 'rgba(255, 255, 255, 0.5)',
+                                borderWidth: 2,
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // --- Physics Engine ---
+
+        function calculateCycle() {
+            // V_min (Clearance Volume) = V_disp / (r - 1)
+            // V_max (Total Volume) = V_disp + V_min
+            const V_min = V_DISPLACEMENT / (state.compressionRatio - 1);
+            const V_max = V_DISPLACEMENT + V_min;
+
+            // Point 1: Intake start (Atmospheric)
+            const P1 = P_ATM;
+            const T1 = T_AMBIENT;
+            const V1 = V_max;
+
+            // 1->2: Adiabatic Compression
+            const V2 = V_min;
+            const P2 = P1 * Math.pow(state.compressionRatio, GAMMA);
+            const T2 = T1 * Math.pow(state.compressionRatio, GAMMA - 1);
+
+            // 2->3: Isochoric Heat Addition (Combustion)
+            const R_specific = 287; // J/(kg*K) for air
+            const mass = (P1 * V1) / (R_specific * T1);
+            const Cv = 718; // J/(kg*K)
+
+            const T3 = T2 + state.heatAdded / (mass * Cv);
+            const V3 = V2;
+            const P3 = P2 * (T3 / T2);
+
+            // 3->4: Adiabatic Expansion (Power Stroke)
+            const V4 = V1;
+            const P4 = P3 * Math.pow(V3 / V4, GAMMA);
+            const T4 = T3 * Math.pow(V3 / V4, GAMMA - 1);
+
+            // Efficiency
+            const efficiency = 1 - (1 / Math.pow(state.compressionRatio, GAMMA - 1));
+            const work = state.heatAdded * efficiency;
+
+            // Update UI Stats
+            workEl.textContent = `${work.toFixed(0)} J`;
+            effEl.textContent = `${(efficiency * 100).toFixed(1)} %`;
+
+            // Generate Cycle Points for PV Chart
+            const points = [];
+            const steps = 20;
+
+            // 1->2 Compression
+            for (let i = 0; i <= steps; i++) {
+                const v = V1 - (V1 - V2) * (i / steps);
+                const p = P1 * Math.pow(V1 / v, GAMMA);
+                points.push({ x: v * 1000, y: p / 101325 });
+            }
+            // 2->3 Combustion
+            points.push({ x: V2 * 1000, y: P3 / 101325 });
+
+            // 3->4 Expansion
+            for (let i = 0; i <= steps; i++) {
+                const v = V3 + (V4 - V3) * (i / steps);
+                const p = P3 * Math.pow(V3 / v, GAMMA);
+                points.push({ x: v * 1000, y: p / 101325 });
+            }
+            // 4->1 Exhaust/Cooling
+            points.push({ x: V1 * 1000, y: P1 / 101325 });
+
+            state.cyclePoints = points;
+            pvChart.data.datasets[0].data = points;
+
+            // Generate Data for Time Chart (0-720)
+            const timePress = [];
+            const timeTemp = [];
+
+            for (let ang = 0; ang <= 720; ang += 5) {
+                const res = calculateInstantaneous(ang, { P1, V1, T1, P3, V3, T3, T4 });
+                timePress.push({ x: ang, y: res.p / 101325 });
+                timeTemp.push({ x: ang, y: res.t });
+            }
+            timeChart.data.datasets[0].data = timePress;
+            timeChart.data.datasets[1].data = timeTemp;
+            timeChart.update();
+
+            return { P1, V1, T1, P2, V2, T2, P3, V3, T3, P4, V4, T4, mass, Cv };
+        }
+
+        function calculateInstantaneous(angle, cycle) {
+            angle = angle % 720;
+            const rad = (angle * Math.PI) / 180;
+            const pistonPos = (1 - Math.cos(rad)) / 2; // 0 at 0, 1 at 180...
+
+            const V_min = V_DISPLACEMENT / (state.compressionRatio - 1);
+            const v = V_min + pistonPos * V_DISPLACEMENT;
+
+            let p, t;
+
+            if (angle < 180) { // Intake
+                p = P_ATM;
+                t = T_AMBIENT;
+            } else if (angle < 360) { // Compression
+                p = cycle.P1 * Math.pow(cycle.V1 / v, GAMMA);
+                t = cycle.T1 * Math.pow(cycle.V1 / v, GAMMA - 1);
+            } else if (angle < 540) { // Power
+                p = cycle.P3 * Math.pow(cycle.V3 / v, GAMMA);
+                t = cycle.T3 * Math.pow(cycle.V3 / v, GAMMA - 1);
+            } else { // Exhaust
+                p = P_ATM;
+                t = cycle.T4; // Simplified
+            }
+            return { p, v, t };
+        }
+
+        function updatePhysics() {
+            // We need the cycle data, but calculating it every frame is expensive if parameters didn't change.
+            // For simplicity in this demo, we recalculate or cache. 
+            // Better: calculateCycle() updates a global cycle object when sliders change.
+            // Here we just call calculateInstantaneous with current cycle params.
+            // To do this properly, let's store the cycle object.
+
+            if (!state.cachedCycle) {
+                state.cachedCycle = calculateCycle();
+            }
+
+            const res = calculateInstantaneous(state.crankAngle, state.cachedCycle);
+            state.currentPressure = res.p;
+            state.currentVolume = res.v;
+            state.currentTemp = res.t;
+
+            // Piston Y for drawing
+            const rad = (state.crankAngle * Math.PI) / 180;
+            state.pistonY = (1 - Math.cos(rad)) / 2;
+
+            // Update UI Text
+            const angle = state.crankAngle % 720;
+            let stroke = "";
+            if (angle < 180) stroke = "Admisie";
+            else if (angle < 360) stroke = "Compresie";
+            else if (angle < 540) stroke = "Detentă";
+            else stroke = "Evacuare";
+
+            strokeNameEl.textContent = stroke;
+            strokeNameEl.className = `font-bold ${angle >= 360 && angle < 540 ? 'text-red-500' : 'text-yellow-400'}`;
+            volEl.textContent = (res.v * 1000).toFixed(3);
+            pressEl.textContent = (res.p / 101325).toFixed(2);
+            tempEl.textContent = res.t.toFixed(0);
+
+            // Update Charts
+            pvChart.data.datasets[1].data = [{ x: res.v * 1000, y: res.p / 101325 }];
+            pvChart.update('none');
+
+            // Update Time Chart Line Position (using annotation plugin or just redrawing chart with a vertical line is complex)
+            // Simpler: Just update the annotation if using chartjs-plugin-annotation, but we didn't load it.
+            // Fallback: We can't easily draw a vertical line without the plugin. 
+            // Let's just highlight the point on the graph corresponding to current angle?
+            // Or just trust the animation. 
+            // Actually, let's try to use the 'annotation' plugin syntax in options, but since we didn't import the script, it won't work.
+            // Let's import the annotation plugin in the head.
+        }
+
+        // --- Drawing ---
+        function drawEngine() {
+            // ... (Same drawing logic as before, just ensuring context is correct)
+            // Resize canvas
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+
+            const w = canvas.width;
+            const h = canvas.height;
+            const cx = w / 2;
+            const cy = h / 2 + 50;
+
+            const scale = Math.min(w, h) / 400;
+
+            const cylWidth = 120 * scale;
+            const cylHeight = 200 * scale;
+            const pistonHeight = 60 * scale;
+            const crankRadius = 40 * scale;
+
+            const angleRad = (state.crankAngle * Math.PI) / 180;
+            const crankX = cx;
+            const crankY = cy + 100 * scale;
+
+            const topY = cy - 100 * scale;
+            const pistonTopY = topY + state.pistonY * (cylHeight - pistonHeight - 20 * scale);
+
+            // Draw Cylinder
+            ctx.fillStyle = '#374151';
+            ctx.fillRect(cx - cylWidth / 2 - 10, topY, 10, cylHeight);
+            ctx.fillRect(cx + cylWidth / 2, topY, 10, cylHeight);
+
+            // Head
+            ctx.fillStyle = '#1f2937';
+            ctx.fillRect(cx - cylWidth / 2 - 10, topY - 20, cylWidth + 20, 20);
+
+            // Valves
+            const angle = state.crankAngle % 720;
+            const intakeOpen = angle < 180;
+            const exhaustOpen = angle >= 540;
+
+            // Intake
+            ctx.fillStyle = intakeOpen ? '#4ade80' : '#9ca3af';
+            const iValY = intakeOpen ? topY + 10 : topY;
+            ctx.beginPath();
+            ctx.moveTo(cx - 30 * scale, topY - 10);
+            ctx.lineTo(cx - 30 * scale, iValY);
+            ctx.lineTo(cx - 50 * scale, iValY + 5);
+            ctx.lineTo(cx - 10 * scale, iValY + 5);
+            ctx.fill();
+
+            // Exhaust
+            ctx.fillStyle = exhaustOpen ? '#ef4444' : '#9ca3af';
+            const eValY = exhaustOpen ? topY + 10 : topY;
+            ctx.beginPath();
+            ctx.moveTo(cx + 30 * scale, topY - 10);
+            ctx.lineTo(cx + 30 * scale, eValY);
+            ctx.lineTo(cx + 10 * scale, eValY + 5);
+            ctx.lineTo(cx + 50 * scale, eValY + 5);
+            ctx.fill();
+
+            // Gas
+            let gasColor;
+            if (angle < 180) gasColor = `rgba(56, 189, 248, ${0.3 + Math.random() * 0.1})`;
+            else if (angle < 360) {
+                const ratio = (angle - 180) / 180;
+                gasColor = `rgba(${56 + ratio * 200}, ${189 + ratio * 20}, ${248 - ratio * 200}, ${0.3 + ratio * 0.4})`;
+            } else if (angle < 540) {
+                const ratio = (angle - 360) / 180;
+                gasColor = `rgba(255, ${100 * ratio}, 0, ${0.8 - ratio * 0.5})`;
+                if (angle < 370) {
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = "white";
+                    ctx.fillStyle = "#fff";
+                    ctx.beginPath();
+                    ctx.arc(cx, topY + 5, 5 + Math.random() * 10, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            } else {
+                gasColor = `rgba(100, 100, 100, 0.5)`;
+            }
+
+            ctx.fillStyle = gasColor;
+            ctx.fillRect(cx - cylWidth / 2, topY, cylWidth, pistonTopY - topY);
+
+            // Piston
+            ctx.fillStyle = '#9ca3af';
+            ctx.fillRect(cx - cylWidth / 2 + 2, pistonTopY, cylWidth - 4, pistonHeight);
+            ctx.fillStyle = '#4b5563';
+            ctx.fillRect(cx - cylWidth / 2 + 2, pistonTopY + 10, cylWidth - 4, 3);
+            ctx.fillRect(cx - cylWidth / 2 + 2, pistonTopY + 20, cylWidth - 4, 3);
+
+            // Rod
+            const pPinX = cx;
+            const pPinY = pistonTopY + pistonHeight / 2;
+            const cPinX = crankX + crankRadius * Math.sin(angleRad);
+            const cPinY = crankY - crankRadius * Math.cos(angleRad);
+
+            ctx.strokeStyle = '#6b7280';
+            ctx.lineWidth = 8 * scale;
+            ctx.beginPath();
+            ctx.moveTo(pPinX, pPinY);
+            ctx.lineTo(cPinX, cPinY);
+            ctx.stroke();
+
+            // Crank
+            ctx.beginPath();
+            ctx.arc(crankX, crankY, 10 * scale, 0, Math.PI * 2);
+            ctx.fillStyle = '#d1d5db';
+            ctx.fill();
+            ctx.strokeStyle = '#4b5563';
+            ctx.lineWidth = 10 * scale;
+            ctx.beginPath();
+            ctx.moveTo(crankX, crankY);
+            ctx.lineTo(cPinX, cPinY);
+            ctx.stroke();
+
+            // Plug
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(cx - 2, topY - 5, 4, 10);
+        }
+
+        // --- Loop ---
+        let lastTime = 0;
+        function loop(timestamp) {
+            if (!lastTime) lastTime = timestamp;
+            const dt = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            if (state.isRunning) {
+                const speedMultiplier = state.isSlowMo ? 0.2 : 1.0;
+                const dAngle = (state.rpm / 60) * 360 * dt * speedMultiplier;
+                state.crankAngle += dAngle;
+            }
+
+            updatePhysics();
+            drawEngine();
+            requestAnimationFrame(loop);
+        }
+
+        // --- Events ---
+        playBtn.addEventListener('click', () => {
+            state.isRunning = !state.isRunning;
+            updatePlayButton();
+        });
+
+        function updatePlayButton() {
+            if (state.isRunning) {
+                playText.textContent = "Pauză";
+                playBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                playBtn.classList.add('bg-yellow-600', 'hover:bg-yellow-700');
+                document.getElementById('play-icon').textContent = "⏸";
+            } else {
+                playText.textContent = "Continuă";
+                playBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
+                playBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+                document.getElementById('play-icon').textContent = "▶";
+            }
+        }
+
+        slowMoBtn.addEventListener('click', () => {
+            state.isSlowMo = !state.isSlowMo;
+            slowMoBtn.textContent = state.isSlowMo ? "Slow Motion: ON" : "Slow Motion: OFF";
+            slowMoBtn.classList.toggle('bg-purple-600');
+            slowMoBtn.classList.toggle('bg-purple-800');
+        });
+
+        window.jumpToStroke = function (angle) {
+            state.crankAngle = angle;
+            state.isRunning = true; // Auto play when jumping? Or pause? Let's auto play to show the stroke.
+            updatePlayButton();
+        };
+
+        compSlider.addEventListener('input', (e) => {
+            state.compressionRatio = parseFloat(e.target.value);
+            document.getElementById('compression-val').textContent = state.compressionRatio.toFixed(1);
+            state.cachedCycle = null; // Invalidate cache
+        });
+
+        rpmSlider.addEventListener('input', (e) => {
+            state.rpm = parseInt(e.target.value);
+            document.getElementById('rpm-val').textContent = state.rpm;
+        });
+
+        heatSlider.addEventListener('input', (e) => {
+            state.heatAdded = parseInt(e.target.value);
+            document.getElementById('heat-val').textContent = state.heatAdded + " J";
+            state.cachedCycle = null; // Invalidate cache
+        });
+
+        // Init
+        state.cachedCycle = calculateCycle();
+        requestAnimationFrame(loop);
+
+    </script>
+</body>
+
+</html>
